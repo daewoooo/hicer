@@ -49,15 +49,26 @@ getInteractionSet <- function(h5.file=NULL, chromosomes=NULL, bin.size=10000, mi
 #' @param h5.file Hierarchical data format (HDF5) to where Hi-C read pairs are stored.
 #' @param region A \code{\link{GRanges-class}} object containing genomic region to plots HIC interactions for.
 #' @param min.count Minimum number of Hi-C links between any pair of genomic bins.
+#' @param runmed.outlier An odd number to calculate running median value to be used as a new max to remove outliers.
 #' @param highlight.gr A \code{\link{GRanges-class}} object containing gnomic region(s) to be highlighted in the final plot.
 #' @param position A overall layout of the HIC interactions either 'diagonal' or 'horizontal'.
+#' @param color.pal A user defined color palette to be used to color the HiC contact matrix.
 #' @param bsgenome A \code{\link{GBSgenome-class}} object to provide chromosome lengths for plotting.
 #' @param fai A FASTA index to get lengths of genomic sequences.
+#' @param title A user defined character string to be used as a title for the final plot
 #' @return A \code{\link[ggplot2:ggplot]{ggplot}} object.
 #' @author David Porubsky
 #' @export
 #' 
-plotContactMatrixRegional <- function(h5.file=NULL, region=NULL, bin.size=10000, min.count=1, highlight.gr=NULL, position='diagonal', bsgenome=NULL, fai=NULL) {
+plotContactMatrixRegional <- function(h5.file=NULL, region=NULL, bin.size=10000, min.count=1, runmed.outlier=0, highlight.gr=NULL, position='diagonal', color.pal=NULL, bsgenome=NULL, fai=NULL, title=NULL) {
+  ## Helper function
+  areColors <- function(x) {
+    sapply(x, function(X) {
+      tryCatch(is.matrix(col2rgb(X)), 
+               error = function(e) FALSE)
+    })
+  }
+  
   ## Get chromosome lengths
   if (!is.null(bsgenome)) {
     ## Load BSgenome
@@ -134,10 +145,20 @@ plotContactMatrixRegional <- function(h5.file=NULL, region=NULL, bin.size=10000,
                         'anchor1'=anchor1,
                         'anchor2'=anchor2)
   
+  ## Smooth contact matrix values by setting an outlier values based on running median
+  if (runmed.outlier > 0) {
+    if ((runmed.outlier %% 2) != 0) {
+      outlier <- max(runmed(link.df$value, runmed.outlier)) 
+      link.df$value[link.df$value > outlier] <- outlier  
+    } else {
+      warning("Parameter 'runmed.outlier' has to be an odd number!!!")
+    }
+  }
+  
   if (position == 'diagonal') {
     plt <- ggplot2::ggplot(link.df) +
       geom_rect(aes(xmin=M1.start, xmax=M1.end, ymin=M2.start, ymax=M2.end, fill=value)) +
-      scale_fill_gradient(low = "white", high = "black", trans = 'log', name="# of Interactions (log)") +
+      #scale_fill_gradient(low = "white", high = "black", trans = 'log', name="# of Interactions (log)") +
       xlab("Chromosome/scaffold name") +
       ylab("Genomic position (Mbp)") +
       theme_bw() +
@@ -160,6 +181,9 @@ plotContactMatrixRegional <- function(h5.file=NULL, region=NULL, bin.size=10000,
   } else if (position == 'horizonal') {
     linkHorizontalCoords.df <- diagonal2horizonalHiCcontacts(HICcontacts.df = link.df)
     
+    xstart <- min(linkHorizontalCoords.df$x)
+    xend <- max(linkHorizontalCoords.df$x)
+    ylim2 <- max(linkHorizontalCoords.df$y)
     ## Set plotting theme
     my.theme <- theme(panel.grid.major = element_blank(), 
                       panel.grid.minor = element_blank(),
@@ -168,7 +192,7 @@ plotContactMatrixRegional <- function(h5.file=NULL, region=NULL, bin.size=10000,
     ## Make the plot
     plt <- ggplot2::ggplot(linkHorizontalCoords.df, aes(x = x, y = y)) +
       geom_polygon(aes(fill = value, group = bin)) +
-      scale_fill_gradient(low = "white", high = "black", trans = 'log', name="Links (log)") + 
+      #scale_fill_gradient(low = "white", high = "black", trans = 'log', name="Links (log)") + 
       coord_fixed( ratio=1, xlim=c(xstart, xend), ylim=c(0, ylim2) ) +
       scale_y_continuous(labels = comma) +
       scale_x_continuous(labels = comma) +
@@ -185,10 +209,29 @@ plotContactMatrixRegional <- function(h5.file=NULL, region=NULL, bin.size=10000,
                                        'group' = 1:length(highlight.gr))
       
       plt <- plt + geom_segment(data=highlight.range.df, aes(x = x, xend = xend,  y =y, yend = yend), color='orange',  size=1)
+      #plt + geom_rect(data=highlight.range.df, aes(xmin = x, xmax = xend, ymin = 0, ymax = -bin.size), fill='orange')
     } else {
       stop("HiC plot postion/layout can be either 'diagonal' or 'horizontal' !!!")
     }
   }  
+  ## Add color palette
+  if (!is.null(color.pal)) {
+    if (all(areColors(pal))) {
+      plt <- plt + scale_fill_gradientn(colours = color.pal, n.breaks=length(color.pal), trans = 'log', name="Links (log)")
+    } else {
+      warning("Not all colors defined in 'color.pal' are valid, using default color scheme!!!")
+      plt <- plt + scale_fill_gradient(low = "white", high = "black", trans = 'log', name="Links (log)")
+    }
+  }
+  ## Add plot title if defined
+  if (!is.null(title)) {
+    if (is.character(title)) {
+      plt <- plt + ggtitle(title) 
+    } else {
+      warning("Parameter 'title' has to be a character string in order to be added to the plot!!!")
+    }
+  }
+  ## Return final plot
   return(plt)
 }
 
