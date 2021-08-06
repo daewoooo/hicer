@@ -394,7 +394,8 @@ validateInversionHic <- function(gi.obj=NULL, inversion.gr=NULL, n.bin.lookup=3,
   ## Get observed contact around inversion breakpoints
   rand.counts <- list()
   for (i in 1:n.perm) {
-    rand.gr <- primatR::randomizeRanges(gr = inversion.gr, bsgenome = bsgenome)
+    rand.gr <- randomizeRanges(gr = inversion.gr, bsgenome = bsgenome)
+    #rand.gr <- regioneR::randomizeRegions(A = inversion.gr, genome = 'hg38', per.chromosome = TRUE, allow.overlaps = TRUE)
     rand.count <- getBowtieContacts(gi.obj = gi.obj, inversion.gr = rand.gr, n.bin.lookup = n.bin.lookup, blacklist.gr = blacklist.gr)
     rand.counts[[i]] <- rand.count
   }
